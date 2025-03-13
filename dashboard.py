@@ -117,6 +117,7 @@ st.header("Performance Trends")
 if not filtered_df.empty and 'selected_company' in locals() and selected_company:
     years = ["2021", "2022", "2023"]
 
+    # Fix: Only generate trend data for the selected company
     trend_data = pd.DataFrame({
         "Year": years,
         "Revenue": np.random.normal(company_data["Revenue"], company_data["Revenue"] * 0.1, 3),
@@ -167,13 +168,10 @@ if not filtered_df.empty:
         
         for col in metrics_to_compare:
             if col in ["Revenue", "EBITDA"]:
-                # Format large currency values
                 display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}")
             elif col == "EBITDA Margin":
-                # Format percentages
                 display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}")
             else:
-                # Format ratios to 2 decimal places
                 display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}")
         
         st.write(display_df)
@@ -213,15 +211,15 @@ if not filtered_df.empty:
                 return (value - min_values[metric]) / (max_values[metric] - min_values[metric])
             else:
                 return 1 - ((value - min_values[metric]) / (max_values[metric] - min_values[metric]))
-        
+
         heatmap_data['normalized_value'] = heatmap_data.apply(normalize_value, axis=1)
-        
+
         heatmap = alt.Chart(heatmap_data).mark_rect().encode(
             x="Company:N",
             y="variable:N",
             color=alt.Color(
                 "normalized_value:Q", 
-                scale=alt.Scale(domain=[0, 1], scheme="redYellowGreen"),
+                scale=alt.Scale(domain=[0, 1], scheme="redyellowgreen-9"),  # Fixed scheme name
                 legend=alt.Legend(title="Risk Level")
             ),
             tooltip=["Company", "variable", "value"]
