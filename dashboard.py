@@ -228,24 +228,50 @@ st.header("Risk Heatmap")
 if not filtered_df.empty:
     # Filter to the selected company if one is chosen
     if 'selected_company' in locals() and selected_company:
-        heatmap_data = filtered_df[filtered_df["Company"] == selected_company][["Company"] + df.columns.tolist()].copy()
+        # Only select columns that we know exist in the DataFrame
+        heatmap_data = filtered_df[filtered_df["Company"] == selected_company][["Company", "Leverage Ratio", "Interest Coverage"]].copy()
     else:
-        heatmap_data = filtered_df[["Company"] + df.columns.tolist()].copy()
+        # Only select columns that we know exist in the DataFrame
+        heatmap_data = filtered_df[["Company", "Leverage Ratio", "Interest Coverage"]].copy()
     
-    # Define metrics for the heatmap (adjust based on your app's logic)
-    heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]  # Example; use your selected metrics
-    heatmap_data = heatmap_data[["Company"] + heatmap_metrics]
+    # Define metrics for the heatmap
+    heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]
     
-    # Fill NaNs with 0 in metric columns
-    heatmap_data[heatmap_metrics] = heatmap_data[heatmap_metrics].fillna(0)
+    # Verify all columns exist before proceeding
+    all_columns_exist = all(metric in heatmap_data.columns for metric in heatmap_metrics)
     
-    # Melt the DataFrame
-    heatmap_data = heatmap_data.melt(
-        id_vars=["Company"],
-        value_vars=heatmap_metrics,
-        var_name="Metric",
-        value_name="Value"
-    )
+    if all_columns_exist:
+        # Fill NaNs with 0 in metric columns
+        heatmap_data[heatmap_metrics] = heatmap_data[heatmap_metrics].fillna(0)
+        
+        # Convert to numeric to ensure proper types
+        for metric in heatmap_metrics:
+            heatmap_data[metric] = pd.to_numeric(heatmap_data[metric], errors='coerce')
+        
+        # Debug: show dataframe before melting
+        st.write("Heatmap data before melt:", heatmap_data)
+        
+        try:
+            # Melt the DataFrame
+            heatmap_data = pd.melt(
+                heatmap_data,
+                id_vars=["Company"],
+                value_vars=heatmap_metrics,
+                var_name="Metric",
+                value_name="Value"
+            )
+        except Exception as e:
+            st.error(f"Error melting data: {str(e)}")
+            # Fallback: create melted data manually
+            rows = []
+            for _, row in heatmap_data.iterrows():
+                company = row["Company"]
+                for metric in heatmap_metrics:
+                    rows.append({"Company": company, "Metric": metric, "Value": row[metric]})
+            heatmap_data = pd.DataFrame(rows)
+    else:
+        st.error(f"Missing columns in data. Available: {heatmap_data.columns.tolist()}, Required: {heatmap_metrics}")
+        heatmap_data = pd.DataFrame(columns=["Company", "Metric", "Value"])
     
     # Example normalization function (replace with your own if different)
     def normalize_value(row):
