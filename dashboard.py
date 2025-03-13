@@ -42,11 +42,21 @@ if selected_category == "All":
 else:
     filtered_df = df[df["Category"] == selected_category]
 
+# Add Sector column to the original DataFrame first
 df["Sector"] = df["Company"].map({
     "TWLO": "Technology", "PD": "Technology", "BOX": "Technology",
     "TDOC": "Healthcare", "AMWL": "Healthcare", "HIMS": "Healthcare",
     "MAN": "Services", "RHI": "Services", "ASGN": "Services"
 })
+
+# Apply category filter
+selected_category = st.selectbox("Filter by Category", ["All"] + list(df["Category"].unique()))
+if selected_category == "All":
+    filtered_df = df
+else:
+    filtered_df = df[df["Category"] == selected_category]
+
+# Then apply sector filter to the already filtered DataFrame
 selected_sector = st.multiselect("Filter by Sector", ["All"] + list(df["Sector"].unique()), default="All")
 if "All" not in selected_sector and selected_sector:
     filtered_df = filtered_df[filtered_df["Sector"].isin(selected_sector)]
