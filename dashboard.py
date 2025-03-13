@@ -106,12 +106,15 @@ st.markdown("**Footnote:** The Interest Rate Slider adjusts Interest Expense to 
 
 st.header("Performance Trends")
 years = ["2021", "2022", "2023"]
+
+# Fix: Only generate trend data for the selected company
 trend_data = pd.DataFrame({
-    "Year": years * len(filtered_df),
-    "Revenue": np.concatenate([np.random.normal(company_data["Revenue"], company_data["Revenue"] * 0.1, 3) for _ in range(len(filtered_df))]),
-    "EBITDA": np.concatenate([np.random.normal(company_data["EBITDA"], abs(company_data["EBITDA"]) * 0.1, 3) for _ in range(len(filtered_df))]),
+    "Year": years,
+    "Revenue": np.random.normal(company_data["Revenue"], company_data["Revenue"] * 0.1, 3),
+    "EBITDA": np.random.normal(company_data["EBITDA"], abs(company_data["EBITDA"]) * 0.1, 3),
     "Company": [selected_company] * 3
 })
+
 revenue_chart = alt.Chart(trend_data).mark_line(color="#00CED1").encode(
     x="Year",
     y="Revenue",
