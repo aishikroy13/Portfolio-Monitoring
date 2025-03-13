@@ -50,19 +50,19 @@ df["Sector"] = df["Company"].map({
 })
 
 # Apply category filter
-selected_category = st.selectbox("Filter by Category", ["All"] + list(df["Category"].unique()))
+selected_category = st.selectbox("Filter by Category", ["All"] + list(df["Category"].unique()), key="category_filter")
 if selected_category == "All":
     filtered_df = df
 else:
     filtered_df = df[df["Category"] == selected_category]
 
 # Then apply sector filter to the already filtered DataFrame
-selected_sector = st.multiselect("Filter by Sector", ["All"] + list(df["Sector"].unique()), default="All")
+selected_sector = st.multiselect("Filter by Sector", ["All"] + list(df["Sector"].unique()), default="All", key="sector_filter")
 if "All" not in selected_sector and selected_sector:
     filtered_df = filtered_df[filtered_df["Sector"].isin(selected_sector)]
 
 st.header("Company Details")
-selected_company = st.selectbox("Select a Company", filtered_df["Company"])
+selected_company = st.selectbox("Select a Company", filtered_df["Company"], key="company_selector")
 company_data = filtered_df[filtered_df["Company"] == selected_company].iloc[0]
 
 st.subheader(f"{selected_company} Financial Health")
@@ -154,7 +154,7 @@ else:
 st.write(f"Risk Score: {risk_score:.2f} (Lower is better; scale 0-100)")
 
 st.header("Portfolio Comparison")
-metrics_to_compare = st.multiselect("Select Metrics to Compare", ["Revenue", "EBITDA", "Leverage Ratio", "Interest Coverage", "EBITDA Margin"], default=["Leverage Ratio", "Interest Coverage"])
+metrics_to_compare = st.multiselect("Select Metrics to Compare", ["Revenue", "EBITDA", "Leverage Ratio", "Interest Coverage", "EBITDA Margin"], default=["Leverage Ratio", "Interest Coverage"], key="metrics_selector")
 st.write(filtered_df[["Company"] + metrics_to_compare])
 
 st.header("Risk Heatmap")
