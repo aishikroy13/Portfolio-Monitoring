@@ -226,52 +226,77 @@ if not filtered_df.empty:
 
 st.header("Risk Heatmap")
 if not filtered_df.empty:
+    # Use the metrics selected in the Portfolio Comparison section
+    if 'metrics_to_compare' in locals() and metrics_to_compare:
+        heatmap_metrics = metrics_to_compare
+    else:
+        # Default metrics if none selected
+        heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]
+    
     # Filter to the selected company if one is chosen
     if 'selected_company' in locals() and selected_company:
-        # Only select columns that we know exist in the DataFrame
-        heatmap_data = filtered_df[filtered_df["Company"] == selected_company][["Company", "Leverage Ratio", "Interest Coverage"]].copy()
+        heatmap_data = filtered_df[filtered_df["Company"] == selected_company][["Company"] + heatmap_metrics].copy()
     else:
-        # Only select columns that we know exist in the DataFrame
-        heatmap_data = filtered_df[["Company", "Leverage Ratio", "Interest Coverage"]].copy()
+        heatmap_data = filtered_df[["Company"] + heatmap_metrics].copy()
     
-    # Define metrics for the heatmap
-    heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]
+    # Fill NaNs with 0 in metric columns
+    heatmap_data[heatmap_metrics] = heatmap_data[heatmap_metrics].fillna(0)
     
-    # Verify all columns exist before proceeding
-    all_columns_exist = all(metric in heatmap_data.columns for metric in heatmap_metrics)
+    # Convert to numeric to ensure proper types
+    for metric in heatmap_metrics:
+        heatmap_data[metric] = pd.to_numeric(heatmap_data[metric], errors='coerce')
     
-    if all_columns_exist:
-        # Fill NaNs with 0 in metric columns
-        heatmap_data[heatmap_metrics] = heatmap_data[heatmap_metrics].fillna(0)
+    try:
+        # Melt the DataFrame
+        heatmap_data = pd.melt(
+            heatmap_data,
+            id_vars=["Company"],
+            value_vars=heatmap_metrics,
+            var_name="Metric",
+            value_name="Value"
+        )
         
-        # Convert to numeric to ensure proper types
-        for metric in heatmap_metrics:
-            heatmap_data[metric] = pd.to_numeric(heatmap_data[metric], errors='coerce')
+        # Example normalization function (replace with your own if different)
+        def normalize_value(row):
+            metric = row["Metric"]
+            value = row["Value"]
+            metric_values = heatmap_data[heatmap_data["Metric"] == metric]["Value"]
+            min_val, max_val = metric_values.min(), metric_values.max()
+            if min_val == max_val:
+                return 0.5
+            return (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
         
-        # Debug: show dataframe before melting
-        st.write("Heatmap data before melt:", heatmap_data)
+        # Apply normalization and ensure numeric type
+        heatmap_data["Normalized_Value"] = heatmap_data.apply(normalize_value, axis=1)
+        heatmap_data["Normalized_Value"] = pd.to_numeric(heatmap_data["Normalized_Value"], errors="coerce")
+        heatmap_data["Normalized_Value"] = heatmap_data["Normalized_Value"].clip(0, 1)
         
-        try:
-            # Melt the DataFrame
-            heatmap_data = pd.melt(
-                heatmap_data,
-                id_vars=["Company"],
-                value_vars=heatmap_metrics,
-                var_name="Metric",
-                value_name="Value"
+        # Clean the DataFrame
+        heatmap_data = heatmap_data.dropna(subset=["Normalized_Value"])
+        heatmap_data = heatmap_data.reset_index(drop=True)
+        
+        # Create and render the heatmap
+        if not heatmap_data.empty:
+            heatmap = alt.Chart(heatmap_data).mark_rect().encode(
+                x=alt.X("Company:N", title="Company"),
+                y=alt.Y("Metric:N", title="Metric"),
+                color=alt.Color(
+                    "Normalized_Value:Q",
+                    scale=alt.Scale(domain=[0, 1], scheme="redyellowgreen"),
+                    legend=alt.Legend(title="Risk Level (0-1)")
+                ),
+                tooltip=["Company", "Metric", "Value:Q", "Normalized_Value:Q"]
+            ).properties(
+                width=600,
+                height=len(heatmap_metrics) * 40
             )
-        except Exception as e:
-            st.error(f"Error melting data: {str(e)}")
-            # Fallback: create melted data manually
-            rows = []
-            for _, row in heatmap_data.iterrows():
-                company = row["Company"]
-                for metric in heatmap_metrics:
-                    rows.append({"Company": company, "Metric": metric, "Value": row[metric]})
-            heatmap_data = pd.DataFrame(rows)
-    else:
-        st.error(f"Missing columns in data. Available: {heatmap_data.columns.tolist()}, Required: {heatmap_metrics}")
-        heatmap_data = pd.DataFrame(columns=["Company", "Metric", "Value"])
+            st.altair_chart(heatmap, use_container_width=True)
+        else:
+            st.warning("No valid data available for the heatmap after processing.")
+    except Exception as e:
+        st.error(f"Error creating heatmap: {str(e)}")
+else:
+    st.warning("No data available to display the heatmap.")
     
     # Example normalization function (replace with your own if different)
     def normalize_value(row):
