@@ -224,101 +224,113 @@ if not filtered_df.empty:
 st.header("Risk Heatmap")
 # Only show heatmap if filtered_df is not empty
 if not filtered_df.empty:
-    # Use the selected metrics for the heatmap if any are selected, otherwise use default metrics
+    # Filter to the selected company if one is chosen
+    if 'selected_company' in locals() and selected_company:
+        heatmap_data = filtered_df[filtered_df["Company"] == selected_company][["Company"] + df.columns.tolist()].copy()
+    else:
+        heatmap_data = filtered_df[["Company"] + df.columns.tolist()].copy()
+    
+    # Use the selected metrics for the heatmap if any are selected, otherwise use defaults
     if 'metrics_to_compare' in locals() and metrics_to_compare:
         heatmap_metrics = metrics_to_compare
     else:
         heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]
     
-    # Ensure we have at least one metric
+    # Ensure we have at least one metric and that they exist in the data
+    heatmap_metrics = [m for m in heatmap_metrics if m in heatmap_data.columns]
     if len(heatmap_metrics) > 0:
         try:
-            # Create heatmap with all selected metrics
-            heatmap_data = filtered_df[["Company"] + heatmap_metrics].copy()
+            # Limit heatmap_data to selected metrics plus Company
+            heatmap_data = heatmap_data[["Company"] + heatmap_metrics]
             
-            # Check for NaN values and replace with 0
+            # Replace NaN values with 0 to prevent rendering issues
             for col in heatmap_metrics:
                 if heatmap_data[col].isna().any():
                     heatmap_data[col] = heatmap_data[col].fillna(0)
+                    st.warning(f"Missing values in {col} filled with 0 for heatmap display.")
             
-            # Melt the dataframe for heatmap format
+            # Melt the DataFrame for heatmap format
             heatmap_data = heatmap_data.melt(
-                id_vars=["Company"], 
-                value_vars=heatmap_metrics
+                id_vars=["Company"],
+                value_vars=heatmap_metrics,
+                var_name="Metric",
+                value_name="Value"
             )
             
             # Define metrics where higher values are better
             higher_is_better = ["Interest Coverage", "Revenue", "EBITDA", "EBITDA Margin"]
-            # Define metrics where lower values are better
             lower_is_better = ["Leverage Ratio"]
             
-            # Function to normalize values based on whether higher or lower is better
+            # Normalize values based on metric type
             def normalize_value(row):
-                metric = row['variable']
-                value = row['value']
+                metric = row["Metric"]
+                value = row["Value"]
                 
-                # Get min and max for this metric
-                metric_min = filtered_df[metric].min()
-                metric_max = filtered_df[metric].max()
+                # Use the current heatmap_data for min/max to reflect only the displayed data
+                metric_values = heatmap_data[heatmap_data["Metric"] == metric]["Value"]
+                metric_min = metric_values.min()
+                metric_max = metric_values.max()
                 
-                # Skip normalization if min equals max (prevents division by zero)
+                # Handle case where min equals max to avoid division by zero
                 if metric_min == metric_max:
                     return 0.5
                 
-                # Handle negative values differently based on metric type
+                # Normalize based on whether higher or lower is better
                 if metric in higher_is_better:
-                    # For metrics where higher is better (like Interest Coverage)
                     if metric_min < 0 and metric_max < 0:
                         # All negative: less negative is better
                         return (value - metric_min) / (metric_max - metric_min)
                     elif metric_min < 0:
-                        # Mixed positive/negative: normalize the range and adjust
+                        # Mixed positive/negative
                         range_size = abs(metric_min) + abs(metric_max)
-                        return (value + abs(metric_min)) / range_size
+                        return (value + abs(metric_min)) / range_size if range_size > 0 else 0.5
                     else:
                         # All positive: higher is better
-                        return (value - metric_min) / (metric_max - metric_min)
-                else:
-                    # For metrics where lower is better (like Leverage Ratio)
+                        return (value - metric_min) / (metric_max - metric_min) if (metric_max - metric_min) > 0 else 0.5
+                else:  # Lower is better (e.g., Leverage Ratio)
                     if metric_min < 0 and metric_max < 0:
-                        # All negative: more negative is better for leverage
+                        # All negative: more negative is better
                         return 1 - ((value - metric_min) / (metric_max - metric_min))
                     elif metric_min < 0:
-                        # Mixed: need special handling
-                        if value < 0:
-                            # Negative leverage can be good (may indicate cash > debt)
-                            return 0.7  # Somewhat good but not perfect
-                        else:
-                            # Positive leverage: lower is better
-                            return 1 - (value / metric_max)
+                        # Mixed: negative leverage might be good (e.g., cash > debt)
+                        return 0.7 if value < 0 else 1 - (value / metric_max) if metric_max > 0 else 0.5
                     else:
                         # All positive: lower is better
-                        return 1 - ((value - metric_min) / (metric_max - metric_min))
+                        return 1 - ((value - metric_min) / (metric_max - metric_min)) if (metric_max - metric_min) > 0 else 0.5
             
-            # Add normalized values for consistent coloring
-            heatmap_data['normalized_value'] = heatmap_data.apply(normalize_value, axis=1)
+            # Apply normalization
+            heatmap_data["Normalized_Value"] = heatmap_data.apply(normalize_value, axis=1)
+            heatmap_data["Normalized_Value"] = heatmap_data["Normalized_Value"].clip(0, 1)
             
-            # Make sure normalized values are between 0 and 1
-            heatmap_data['normalized_value'] = heatmap_data['normalized_value'].clip(0, 1)
-            
-            # Create heatmap with normalized values for coloring
+            # Create the heatmap
             heatmap = alt.Chart(heatmap_data).mark_rect().encode(
-                x="Company:N",
-                y="variable:N",
+                x=alt.X("Company:N", title="Company"),
+                y=alt.Y("Metric:N", title="Metric"),
                 color=alt.Color(
-                    "normalized_value:Q", 
+                    "Normalized_Value:Q",
                     scale=alt.Scale(domain=[0, 1], scheme="redyellowgreen-9"),
-                    legend=alt.Legend(title="Risk Level")
+                    legend=alt.Legend(title="Risk Level (0-1)")
                 ),
-                tooltip=["Company", "variable", alt.Tooltip("value:Q", format=".2f")]
+                tooltip=[
+                    "Company",
+                    "Metric",
+                    alt.Tooltip("Value:Q", title="Raw Value", format=".2f"),
+                    alt.Tooltip("Normalized_Value:Q", title="Normalized Value", format=".2f")
+                ]
             ).properties(
                 width=600,
-                height=len(heatmap_metrics) * 40  # Dynamic height based on number of metrics
+                height=len(heatmap_metrics) * 40  # Adjust height dynamically
             )
             
-            st.altair_chart(heatmap)
+            st.altair_chart(heatmap, use_container_width=True)
+            
+            # Optional: Display raw data for debugging
+            # st.write("Heatmap Data:", heatmap_data)
+            
         except Exception as e:
             st.error(f"Error creating heatmap: {str(e)}")
-            st.write("Please select different metrics or check your data for inconsistencies.")
+            st.write("Please check your data or selected metrics for inconsistencies.")
     else:
-        st.warning("Please select at least one metric to display in the heatmap.")
+        st.warning("No valid metrics available for the heatmap. Please select at least one metric.")
+else:
+    st.warning("No data available to display the heatmap. Adjust your filters.")
