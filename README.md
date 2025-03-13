@@ -1,2 +1,2 @@
 # Portfolio-Monitoring
-Project to to monitor a portfolio, standardize data from diverse reports, perform quantitative and qualitative analysis, categorize companies using a traffic light system, and automate the process with interactive dashboards.
+Project to monitor a portfolio, standardize data from diverse reports, perform quantitative and qualitative analysis, categorize companies using a traffic light system, and automate the process with interactive dashboards.
