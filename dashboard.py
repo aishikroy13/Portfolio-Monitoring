@@ -224,76 +224,138 @@ if not filtered_df.empty:
         st.write(display_df)
 
 
-st.header("Risk Heatmap")
+st.header("Metric Comparison Visualization")
 if not filtered_df.empty:
     # Use the metrics selected in the Portfolio Comparison section
     if 'metrics_to_compare' in locals() and metrics_to_compare:
-        heatmap_metrics = metrics_to_compare
+        selected_metrics = metrics_to_compare
     else:
         # Default metrics if none selected
-        heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]
+        selected_metrics = ["Leverage Ratio", "Interest Coverage"]
     
-    # Filter to the selected company if one is chosen
+    # Filter to selected companies
     if 'selected_company' in locals() and selected_company:
-        heatmap_data = filtered_df[filtered_df["Company"] == selected_company][["Company"] + heatmap_metrics].copy()
+        chart_data = filtered_df[filtered_df["Company"] == selected_company].copy()
     else:
-        heatmap_data = filtered_df[["Company"] + heatmap_metrics].copy()
+        chart_data = filtered_df.copy()
     
-    # Fill NaNs with 0 in metric columns
-    heatmap_data[heatmap_metrics] = heatmap_data[heatmap_metrics].fillna(0)
+    # Create normalized data for visualization
+    normalized_data = []
     
-    # Convert to numeric to ensure proper types
-    for metric in heatmap_metrics:
-        heatmap_data[metric] = pd.to_numeric(heatmap_data[metric], errors='coerce')
+    for _, company_row in chart_data.iterrows():
+        company_name = company_row["Company"]
+        
+        for metric in selected_metrics:
+            try:
+                value = float(company_row[metric])
+                
+                # Handle special cases for proper normalization
+                if metric == "EBITDA Margin":
+                    # Higher is better for margins, normalize to 0-1 (assuming margin between -100% and 100%)
+                    normalized_value = (value + 1) / 2 if value < 0 else value
+                elif metric == "Interest Coverage":
+                    # Higher is better for coverage, cap at 20 for normalization
+                    normalized_value = min(max(value, 0), 20) / 20
+                elif metric == "Leverage Ratio":
+                    # Lower is better for leverage, cap at 10 for normalization
+                    # Invert so higher values = better (for consistent color scheme)
+                    normalized_value = 1 - (min(max(value, 0), 10) / 10)
+                elif metric in ["Revenue", "EBITDA"]:
+                    # For revenue/EBITDA, normalize relative to the dataset
+                    all_values = filtered_df[metric].astype(float)
+                    min_val, max_val = all_values.min(), all_values.max()
+                    # For negative EBITDA, treat worse than zero
+                    if metric == "EBITDA" and value < 0:
+                        norm_val = value / min_val if min_val < 0 else 0
+                        normalized_value = 0.5 * (1 + norm_val)  # Scale to 0-0.5 range
+                    else:
+                        # Regular normalization for positive values
+                        range_val = max_val - min_val
+                        normalized_value = (value - min_val) / range_val if range_val > 0 else 0.5
+                else:
+                    # Generic normalization (min-max scaling)
+                    all_values = filtered_df[metric].astype(float)
+                    min_val, max_val = all_values.min(), all_values.max()
+                    range_val = max_val - min_val
+                    normalized_value = (value - min_val) / range_val if range_val > 0 else 0.5
+                
+                # For visualization purposes, ensure values are in 0-1 range
+                normalized_value = max(0, min(normalized_value, 1))
+                
+                normalized_data.append({
+                    "Company": company_name,
+                    "Metric": metric,
+                    "Original_Value": value,
+                    "Normalized_Value": normalized_value
+                })
+            except (ValueError, TypeError):
+                # Skip if value can't be converted to float
+                pass
     
-    try:
-        # Melt the DataFrame
-        heatmap_data = pd.melt(
-            heatmap_data,
-            id_vars=["Company"],
-            value_vars=heatmap_metrics,
-            var_name="Metric",
-            value_name="Value"
+    if normalized_data:
+        # Create DataFrame from normalized data
+        norm_df = pd.DataFrame(normalized_data)
+        
+        # Create a multi-series bar chart
+        st.subheader("Metric Performance by Company")
+        
+        # Calculate height based on number of companies
+        chart_height = max(300, len(chart_data) * 50)
+        
+        bar_chart = alt.Chart(norm_df).mark_bar().encode(
+            x=alt.X("Normalized_Value:Q", title="Normalized Value (0-1)"),
+            y=alt.Y("Company:N", title="Company"),
+            color=alt.Color("Metric:N", 
+                           scale=alt.Scale(scheme="category10"),
+                           legend=alt.Legend(title="Metrics")),
+            tooltip=["Company", "Metric", "Original_Value:Q", "Normalized_Value:Q"]
+        ).properties(
+            width=600,
+            height=chart_height
         )
         
-        # Example normalization function (replace with your own if different)
-        def normalize_value(row):
-            metric = row["Metric"]
-            value = row["Value"]
-            metric_values = heatmap_data[heatmap_data["Metric"] == metric]["Value"]
-            min_val, max_val = metric_values.min(), metric_values.max()
-            if min_val == max_val:
-                return 0.5
-            return (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
+        st.altair_chart(bar_chart, use_container_width=True)
         
-        # Apply normalization and ensure numeric type
-        heatmap_data["Normalized_Value"] = heatmap_data.apply(normalize_value, axis=1)
-        heatmap_data["Normalized_Value"] = pd.to_numeric(heatmap_data["Normalized_Value"], errors="coerce")
-        heatmap_data["Normalized_Value"] = heatmap_data["Normalized_Value"].clip(0, 1)
-        
-        # Clean the DataFrame
-        heatmap_data = heatmap_data.dropna(subset=["Normalized_Value"])
-        heatmap_data = heatmap_data.reset_index(drop=True)
-        
-        # Create and render the heatmap
-        if not heatmap_data.empty:
-            heatmap = alt.Chart(heatmap_data).mark_rect().encode(
-                x=alt.X("Company:N", title="Company"),
-                y=alt.Y("Metric:N", title="Metric"),
-                color=alt.Color(
-                    "Normalized_Value:Q",
-                    scale=alt.Scale(domain=[0, 1], scheme="redyellowgreen"),
-                    legend=alt.Legend(title="Risk Level (0-1)")
-                ),
-                tooltip=["Company", "Metric", "Value:Q", "Normalized_Value:Q"]
-            ).properties(
-                width=600,
-                height=len(heatmap_metrics) * 40
-            )
-            st.altair_chart(heatmap, use_container_width=True)
-        else:
-            st.warning("No valid data available for the heatmap after processing.")
-    except Exception as e:
-        st.error(f"Error creating heatmap: {str(e)}")
+        # Create a scatter plot matrix for the metrics
+        if len(chart_data) > 1 and len(selected_metrics) > 1:
+            st.subheader("Metric Relationship Matrix")
+            
+            # Prepare data for scatter plot matrix
+            metrics_data = chart_data[["Company"] + selected_metrics].copy()
+            
+            # Convert to numeric
+            for metric in selected_metrics:
+                metrics_data[metric] = pd.to_numeric(metrics_data[metric], errors='coerce')
+            
+            # Remove any rows with NaN values
+            metrics_data = metrics_data.dropna()
+            
+            if not metrics_data.empty and len(metrics_data) > 1:
+                # Melt the data for the scatter plot matrix
+                melted_data = pd.melt(
+                    metrics_data, 
+                    id_vars=["Company"], 
+                    value_vars=selected_metrics, 
+                    var_name="Metric", 
+                    value_name="Value"
+                )
+                
+                # Create a scatter plot matrix
+                scatter_matrix = alt.Chart(melted_data).mark_circle(size=60).encode(
+                    x=alt.X("Metric:N", title=None),
+                    y=alt.Y("Value:Q", title=None),
+                    color="Company:N",
+                    tooltip=["Company", "Metric", "Value:Q"]
+                ).properties(
+                    width=600,
+                    height=400
+                ).facet(
+                    column=alt.Column("Metric:N", title=None),
+                    row=alt.Row("Metric:N", title=None)
+                )
+                
+                st.altair_chart(scatter_matrix, use_container_width=True)
+    else:
+        st.warning("No valid data available for visualization.")
 else:
-    st.warning("No data available to display the heatmap.")
+    st.warning("No data available for visualization.")
