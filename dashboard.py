@@ -195,34 +195,27 @@ if not filtered_df.empty and 'selected_company' in locals() and selected_company
     st.write(f"Risk Score: {risk_score:.2f} (Lower is better; scale 0-100)")
 
 st.header("Portfolio Comparison")
-
-# Only show if filtered_df is not empty
 if not filtered_df.empty:
     metrics_to_compare = st.multiselect(
         "Select Metrics to Compare", 
         ["Revenue", "EBITDA", "Leverage Ratio", "Interest Coverage", "EBITDA Margin"], 
-        default=["Leverage Ratio", "Interest Coverage"], 
-        key="metrics_selector"
+        default=["Leverage Ratio", "Interest Coverage"]
     )
-    
     if metrics_to_compare:
-        # Format the displayed data for better readability
         display_df = filtered_df[["Company"] + metrics_to_compare].copy()
-        
-        # Format numerical columns based on their type
         for col in metrics_to_compare:
-            if col in ["Revenue", "EBITDA"]:
-                # Format large currency values
+            if col == "Interest Coverage":
+                # Format Interest Coverage and add a note for very high values
+                display_df[col] = display_df[col].apply(
+                    lambda x: f"{x:.2f}" if abs(x) < 1000 else "N/A (No Debt)"
+                )
+            elif col in ["Revenue", "EBITDA"]:
                 display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}")
             elif col == "EBITDA Margin":
-                # Format percentages
                 display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}")
             else:
-                # Format ratios to 2 decimal places
                 display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}")
-        
         st.write(display_df)
-
 
 st.header("Metric Comparison Visualization")
 if not filtered_df.empty:
