@@ -15,9 +15,7 @@ standardized_data = {
 }
 
 def get_latest_value(df, metric):
-    # Transpose to get dates as rows, metrics as columns
     df = df.T
-    # Take the most recent year (first row after transpose)
     if metric in df.columns and not pd.isna(df[metric].iloc[0]):
         return df[metric].iloc[0]
     return None
@@ -29,9 +27,17 @@ for ticker in companies:
         cash_flow = pd.read_csv(f"{data_folder}/{ticker}_cash.csv", index_col=0)
 
         revenue = get_latest_value(income, "Total Revenue")
-        ebitda = get_latest_value(income, "EBITDA")  # May not always be present
+        ebitda = get_latest_value(income, "EBITDA")
         total_debt = get_latest_value(balance, "Total Debt")
+
         interest_expense = get_latest_value(income, "Interest Expense")
+        if interest_expense is None:
+            interest_expense = get_latest_value(income, "Interest Expense Non Operating")
+        if interest_expense is None:
+            interest_expense = get_latest_value(income, "Net Interest Income")  # Sometimes inverted
+        if interest_expense is None:
+            interest_expense = 0  # Fallback: assume negligible if not found
+
         cash_flow_ops = get_latest_value(cash_flow, "Operating Cash Flow")
 
         if ebitda is None and "Operating Income" in income.index and "Depreciation & Amortization" in income.index:
@@ -44,7 +50,7 @@ for ticker in companies:
         standardized_data["Revenue"].append(revenue)
         standardized_data["EBITDA"].append(ebitda)
         standardized_data["Total Debt"].append(total_debt)
-        standardized_data["Interest Expense"].append(abs(interest_expense) if interest_expense else None)  # Ensure positive
+        standardized_data["Interest Expense"].append(abs(interest_expense) if interest_expense else 0)  # Ensure positive, default to 0
         standardized_data["Cash Flow from Operations"].append(cash_flow_ops)
 
         print(f"Processed data for {ticker}")
