@@ -36,34 +36,29 @@ bar_chart = alt.Chart(chart_data).mark_bar().encode(
 )
 st.altair_chart(bar_chart)
 
-# Add Sector column to the original DataFrame first
 df["Sector"] = df["Company"].map({
     "TWLO": "Technology", "PD": "Technology", "BOX": "Technology",
     "TDOC": "Healthcare", "AMWL": "Healthcare", "HIMS": "Healthcare",
     "MAN": "Services", "RHI": "Services", "ASGN": "Services"
 })
 
-# Apply category filter - just once
 selected_category = st.selectbox("Filter by Category", ["All"] + list(df["Category"].unique()), key="category_filter")
 if selected_category == "All":
     filtered_df = df
 else:
     filtered_df = df[df["Category"] == selected_category]
 
-# Then apply sector filter to the already filtered DataFrame
 selected_sector = st.multiselect("Filter by Sector", ["All"] + list(df["Sector"].unique()), default="All", key="sector_filter")
 if "All" not in selected_sector and selected_sector:
     filtered_df = filtered_df[filtered_df["Sector"].isin(selected_sector)]
 
 st.header("Company Details")
 
-# Check if filtered_df is empty
 if filtered_df.empty:
     st.warning("No companies match the selected filters. Please adjust your filter criteria.")
 else:
     selected_company = st.selectbox("Select a Company", filtered_df["Company"].tolist(), key="company_selector")
     
-    # Get the company data only if there's a valid selection
     if selected_company:
         company_data = filtered_df[filtered_df["Company"] == selected_company].iloc[0]
         
@@ -103,7 +98,6 @@ else:
 st.header("Scenario Analysis")
 st.write("Simulate the impact of market changes on portfolio health.")
 
-# Only show scenario analysis if a company is selected
 if not filtered_df.empty and 'selected_company' in locals() and selected_company:
     interest_rate_change = st.slider("Change in Interest Rate (%)", -5.0, 5.0, 0.0, 0.01, key="interest_slider")
     new_interest_expense = company_data["Interest Expense"] * (1 + interest_rate_change / 100)
@@ -120,11 +114,9 @@ if not filtered_df.empty and 'selected_company' in locals() and selected_company
 
 st.header("Performance Trends")
 
-# Only show performance trends if a company is selected
 if not filtered_df.empty and 'selected_company' in locals() and selected_company:
     years = ["2021", "2022", "2023"]
 
-    # Fix: Only generate trend data for the selected company
     trend_data = pd.DataFrame({
         "Year": years,
         "Revenue": np.random.normal(company_data["Revenue"], company_data["Revenue"] * 0.1, 3),
@@ -162,23 +154,82 @@ if not filtered_df.empty and 'selected_company' in locals() and selected_company
 
 st.header("Portfolio Comparison")
 
-# Only show if filtered_df is not empty
 if not filtered_df.empty:
-    metrics_to_compare = st.multiselect("Select Metrics to Compare", ["Revenue", "EBITDA", "Leverage Ratio", "Interest Coverage", "EBITDA Margin"], default=["Leverage Ratio", "Interest Coverage"], key="metrics_selector")
+    metrics_to_compare = st.multiselect(
+        "Select Metrics to Compare", 
+        ["Revenue", "EBITDA", "Leverage Ratio", "Interest Coverage", "EBITDA Margin"], 
+        default=["Leverage Ratio", "Interest Coverage"], 
+        key="metrics_selector"
+    )
+    
     if metrics_to_compare:
-        st.write(filtered_df[["Company"] + metrics_to_compare])
+        display_df = filtered_df[["Company"] + metrics_to_compare].copy()
+        
+        for col in metrics_to_compare:
+            if col in ["Revenue", "EBITDA"]:
+                # Format large currency values
+                display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}")
+            elif col == "EBITDA Margin":
+                # Format percentages
+                display_df[col] = display_df[col].apply(lambda x: f"{x:.2%}")
+            else:
+                # Format ratios to 2 decimal places
+                display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}")
+        
+        st.write(display_df)
 
 st.header("Risk Heatmap")
-# Only show heatmap if filtered_df is not empty
 if not filtered_df.empty:
-    heatmap_data = filtered_df[["Company", "Leverage Ratio", "Interest Coverage"]].melt(id_vars=["Company"], value_vars=["Leverage Ratio", "Interest Coverage"])
-    heatmap = alt.Chart(heatmap_data).mark_rect().encode(
-        x="Company",
-        y="variable",
-        color=alt.Color("value:Q", scale=alt.Scale(scheme="redyellowgreen")),
-        tooltip=["Company", "variable", "value"]
-    ).properties(
-        width=600,
-        height=200
-    )
-    st.altair_chart(heatmap)
+    if 'metrics_to_compare' in locals() and metrics_to_compare:
+        heatmap_metrics = metrics_to_compare
+    else:
+        heatmap_metrics = ["Leverage Ratio", "Interest Coverage"]
+    
+    if len(heatmap_metrics) > 0:
+        # Create heatmap with all selected metrics
+        heatmap_data = filtered_df[["Company"] + heatmap_metrics].melt(
+            id_vars=["Company"], 
+            value_vars=heatmap_metrics
+        )
+        
+        higher_is_better = ["Interest Coverage", "Revenue", "EBITDA", "EBITDA Margin"]
+        lower_is_better = ["Leverage Ratio"]
+        
+        min_values = {}
+        max_values = {}
+        
+        for metric in heatmap_metrics:
+            min_values[metric] = filtered_df[metric].min()
+            max_values[metric] = filtered_df[metric].max()
+        
+        def normalize_value(row):
+            metric = row['variable']
+            value = row['value']
+            
+            if min_values[metric] == max_values[metric]:
+                return 0.5
+                
+            if metric in higher_is_better:
+                return (value - min_values[metric]) / (max_values[metric] - min_values[metric])
+            else:
+                return 1 - ((value - min_values[metric]) / (max_values[metric] - min_values[metric]))
+        
+        heatmap_data['normalized_value'] = heatmap_data.apply(normalize_value, axis=1)
+        
+        heatmap = alt.Chart(heatmap_data).mark_rect().encode(
+            x="Company:N",
+            y="variable:N",
+            color=alt.Color(
+                "normalized_value:Q", 
+                scale=alt.Scale(domain=[0, 1], scheme="redYellowGreen"),
+                legend=alt.Legend(title="Risk Level")
+            ),
+            tooltip=["Company", "variable", "value"]
+        ).properties(
+            width=600,
+            height=len(heatmap_metrics) * 40  # Dynamic height based on number of metrics
+        )
+        
+        st.altair_chart(heatmap)
+    else:
+        st.warning("Please select at least one metric to display in the heatmap.")
