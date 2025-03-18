@@ -12,7 +12,6 @@ for ticker in companies:
     balance_sheet = stock.balance_sheet
     cash_flow = stock.cashflow
 
-    # Print warnings if financial data is empty
     if income_stmt.empty and balance_sheet.empty and cash_flow.empty:
         print(f"Warning: No financial data found for {ticker}. Skipping...")
         continue  
