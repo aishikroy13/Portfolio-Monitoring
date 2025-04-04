@@ -223,7 +223,7 @@ if not filtered_df.empty:
                 elif metric == "Interest Coverage":
                     normalized_value = min(max(value, 0), 20) / 20
                 elif metric == "Leverage Ratio":
-                    normalized_value = 1 - (min(max(value, 0), 10) / 10)
+                    normalized_value = min(value, 8) / 8
                 elif metric in ["Revenue", "EBITDA"]:
                     all_values = filtered_df[metric].astype(float)
                     min_val, max_val = all_values.min(), all_values.max()
