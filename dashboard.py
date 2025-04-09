@@ -173,7 +173,7 @@ if not filtered_df.empty and 'selected_company' in locals() and selected_company
     
     risk_score = max(0, min(100, risk_score))
     
-    st.write(f"Risk Score: {risk_score:.2f} (Lower is better; scale 0-100)")
+    st.write(f"Risk Score: {risk_score:.2f} (Lower is better; scale 0-80)")
 
 st.header("Portfolio Comparison")
 if not filtered_df.empty:
